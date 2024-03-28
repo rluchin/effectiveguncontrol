@@ -5,4 +5,4 @@ This repo contains the code and replication package for an analysis of US states
 Raw data was collected directly by reviewing sex crime sentencing statistics and tying them to state and the age of consent of the associated state. Additional data was pulled from US FBI and Department of Justice sources.
 
 **Statement on LLM usage**
-LLM model GPT4 and GPT3.5 were used in the creation of code to clean, plot, and graph data. Conversations and links to conversations can be found in
+LLM model GPT4 and GPT3.5 were used in the creation of code to clean, plot, and graph data. Conversations and links to conversations can be found in other/llm/usage.txt
