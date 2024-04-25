@@ -1,24 +1,20 @@
-# Generate example data for state, % of sex crime convictions, and state age of consent
-set.seed(123) # for reproducibility
+# Load necessary libraries
+library(dplyr)
 
-# List of states
-states <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia", 
-            "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", 
-            "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", 
-            "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", 
-            "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", 
-            "West Virginia", "Wisconsin", "Wyoming")
-
-# Simulate % of sex crime convictions (assuming it's a percentage)
-percent_convictions <- round(runif(length(states), min = 0, max = 10), 2)
-
-# Simulate state age of consent (assuming it's an age)
-age_of_consent <- sample(16:18, length(states), replace = TRUE)
+# Set a seed for reproducibility
+set.seed(123)
 
 # Create a data frame
-simulated_data <- data.frame(State = states,
-                             Conviction_Percentage = percent_convictions,
-                             Age_of_Consent = age_of_consent)
+data <- data.frame(
+  age = sample(18:70, 100, replace = TRUE),  # Random ages between 18 and 70
+  gender = sample(c("Male", "Female", "Other"), 100, replace = TRUE, prob = c(0.48, 0.48, 0.04)),  # Gender with a given probability
+  normalsex = sample(0:5, 100, replace = TRUE),  # Random scores for 'normalsex'
+  analsex = sample(0:5, 100, replace = TRUE),    # Random scores for 'analsex'
+  groupsex = sample(0:5, 100, replace = TRUE)    # Random scores for 'groupsex'
+)
 
-# Display first few rows of the data
-head(simulated_data)
+# Print the first few rows of the dataset to see what it looks like
+print(head(data))
+
+# Optional: Save the simulated data to a CSV file
+write.csv(data, "data/analysis_data/simulated_sexual_data.csv", row.names = FALSE)

@@ -1,37 +1,14 @@
-#### Preamble ####
-# Purpose: Models... [...UPDATE THIS...]
-# Author: Rohan Alexander [...UPDATE THIS...]
-# Date: 11 February 2023 [...UPDATE THIS...]
-# Contact: rohan.alexander@utoronto.ca [...UPDATE THIS...]
-# License: MIT
-# Pre-requisites: [...UPDATE THIS...]
-# Any other information needed? [...UPDATE THIS...]
+#Create simple linear model and save to agescore_lm.rds
 
+# Read the dataset from the Parquet file
+data <- read_parquet("data/analysis_data/taboo-average-agescore.parquet")
 
-#### Workspace setup ####
-library(tidyverse)
-library(rstanarm)
+# Fit the linear model
+model <- lm(average ~ selfage, data = data)
 
-#### Read data ####
-analysis_data <- read_csv("data/analysis_data/analysis_data.csv")
+# Save the model to an RDS file
+saveRDS(model, "models/agescore_lm.rds")
 
-### Model data ####
-first_model <-
-  stan_glm(
-    formula = flying_time ~ length + width,
-    data = analysis_data,
-    family = gaussian(),
-    prior = normal(location = 0, scale = 2.5, autoscale = TRUE),
-    prior_intercept = normal(location = 0, scale = 2.5, autoscale = TRUE),
-    prior_aux = exponential(rate = 1, autoscale = TRUE),
-    seed = 853
-  )
-
-
-#### Save model ####
-saveRDS(
-  first_model,
-  file = "models/first_model.rds"
-)
-
-
+# Optionally, to verify saving and view a summary of the model
+loaded_model <- readRDS("models/agescore_lm.rds")
+summary(loaded_model)

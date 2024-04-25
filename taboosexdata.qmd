@@ -1,0 +1,417 @@
+---
+title: "Modelling Social Media Poll Data Finds Correlation Between Age and Liberalization of Sexual Opinions"
+subtitle: "Analysis of internet influencer Aella's Kink Taboo Ratings (v3) Dataset"
+author: 
+  - Russell Luchin
+thanks: "Code and data are available at: https://github.com/rluchin/taboosextopics. Thank you to the R core team for making the analysis of this data possible and to Rohan Alexander for his guidance."
+date: today
+date-format: long
+abstract: "Data from a survey conducted by internet influencer Aella on taboo sexual attitudes was analyzed to examine the influence of age on perceptions of various sexual acts. The analysis revealed a significant trend indicating that younger individuals tend to rate sexual acts as more taboo compared to older respondents, suggesting a younger generations hold more conservative views. However, the study highlighted substantial issues with data collection methods, including a lack of controls and potential response biases, which may skew results. Recommendations made that future research on similar topics implement stronger data collection frameworks, particularly adapted for online environments."
+format: pdf
+number-sections: true
+toc: true
+editor: visual
+bibliography: references.bib
+---
+
+```{r}
+#| echo: false
+#| include: false
+#| error: false
+
+#Load required packages
+library(readxl)
+library(dplyr)
+library(openxlsx)
+library(ggplot2)
+library(knitr)
+library(patchwork)
+library(tidyr)
+library(here)
+library(arrow)
+library(tidyverse)
+library(corrplot)
+```
+
+```{r}
+#| echo: false
+#| error: false
+#| include: false
+
+# Load the raw data
+data <- read_csv("data/raw_data/taboo-ratings-raw.csv")
+
+# Initial cleaning: remove specified columns and columns with bracketed codes
+data <- data %>%
+  select(-c(User, Run, `Program Version`, `Time Started (UTC)`, `Time Finished (UTC)`,
+            `Minutes Spent`, Position, Points, arousalScale, `Your age? (rkkox57)`)) %>%
+  select(-matches("\\(.*\\)"))
+
+# Further clean data by removing rows where 'selfage' is NA
+data_cleaned <- filter(data, !is.na(selfage))
+
+# Save the cleaned data as a Parquet file, only once after all cleaning is done
+write_parquet(data_cleaned, "data/analysis_data/taboo-ratings-cleaned.parquet")
+
+# Verify the operation by inspecting the first few rows of the cleaned data
+head(data_cleaned)
+```
+
+```{r}
+#| echo: false
+#| error: false
+#| include: false
+
+# Read the cleaned data from the Parquet file
+data <- read_parquet("data/analysis_data/taboo-ratings-cleaned.parquet")
+
+# Check if 'selfage' exists and is properly formatted
+if (!"selfage" %in% colnames(data)) {
+  stop("Column 'selfage' does not exist in the dataset")
+}
+
+# Extract 'selfage' separately
+selfage_data <- select(data, selfage)
+
+# Select only numeric columns for the average calculation, ensuring 'selfage' is excluded if it's numeric
+numeric_data <- select(data, where(is.numeric))
+if ("selfage" %in% colnames(numeric_data)) {
+  numeric_data <- select(numeric_data, -selfage)
+}
+
+# Combine 'selfage' back with numeric columns
+combined_data <- bind_cols(selfage_data, numeric_data)
+
+# Calculate the mean of all numeric columns for each 'selfage'
+average_data <- combined_data %>%
+  group_by(selfage) %>%
+  summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop")
+
+# Create a new dataset with 'selfage' and 'average' of other numeric columns
+final_dataset <- average_data %>%
+  transmute(selfage, average = rowMeans(select(., -selfage), na.rm = TRUE))
+
+# Save the new dataset to a new Parquet file
+write_parquet(final_dataset, "data/analysis_data/taboo-average-agescore.parquet")
+
+# Inspect the final dataset
+head(final_dataset)
+```
+
+```{r}
+#| echo: false
+#| error: false
+#| include: false
+
+# Read the dataset from the Parquet file
+data <- read_parquet("data/analysis_data/taboo-average-agescore.parquet")
+
+# Fit the linear model
+model <- lm(average ~ selfage, data = data)
+
+# Save the model to an RDS file
+saveRDS(model, "models/agescore_lm.rds")
+
+# Optionally, to verify saving and view a summary of the model
+loaded_model <- readRDS("models/agescore_lm.rds")
+summary(loaded_model)
+```
+
+# Introduction {#sec-introduction}
+
+The proliferation of online data collection tools has vastly expanded our capacity to gather information on sensitive topics. This paper critically analyzes the Kink Taboo Rating (v3) dataset collected by internet influencer Aella through a Google Forms survey, primarily disseminated via the social media platform X (formerly known as Twitter). Aella's dataset, hosting responses to various sexual acts deemed taboo, provides a unique lens into the sexual mores of a specific segment of the internet-using public. However, anarchic nature of her data collection practices raises significant questions about the reliability of the insights derived from it and their application to general populations.
+
+The primary focus of this paper is to analyze the impact of age on perceptions of sexual taboos. Taboos were rated from zero to five, with zero being the lowest rating (not taboo) and five being the highest rating (extremely taboo) Initial inspection of the raw data, comprising over 48,000 responses, reveals a significant volume of unusable data due to missing age identifiers, necessitating extensive cleaning. The analysis was conducted on a refined dataset of approximately 3,800 responses, segmented by respondents' self-reported age. A secondary dataset was forked from the primary cleaned set by aggregating the ages of respondents and the mean rating per aggregate age. This secondary dataset was then used to create a model to explore how perceptions of taboo vary across age groups. The estimand this paper tracks is the correlation of age with average taboo score.
+
+Analysis identified a clear, statistically significant trend: as age increases, the average taboo rating assigned to various sexual acts decreases. This relationship is quantified through a linear regression model, which captures notable, significant variance in responses based on age alone. The implication of this finding suggest a potential shift in sexual norms over generations, or alternatively a reflection of the more conservative attitudes held by younger internet users.
+
+Moreover, the structure of this paper is designed to tell a story through our comprehensive methodology, from data collection and cleaning to detailed statistical analysis and model building. Each section is crafted to build upon the last, closing with a discussion that contextualizes our findings within a broader methodological landscape associated with data collection.
+
+By dissecting the method of data collection used by Aella and critically assessing its impacts on the data quality and analysis outcomes, this paper not only provides insights into sexual norms but also underscores the crucial importance of rigorous data collection methodologies in social research.
+
+# Data {#sec-data}
+
+## Raw Data {#sec-raw-data}
+
+```{r}
+#| echo: false
+#| error: false
+#| warning: false
+
+# Load the raw data from the CSV file
+data <- read_csv("data/raw_data/taboo-ratings-raw.csv")
+
+# Select the first 6 rows and the first 6 columns
+data_subset <- data[1:6, 1:6]
+
+# Generate a nice-looking table
+kable(data_subset, format = "html", caption = "First 6x6 Subset of Raw Data")
+```
+
+Raw data was collected by internet influencer Aella, using a Google Forms survey primarily distributed through the social media platform X (formerly known as Twitter). Raw data is hosted on Aella's personal website "Knowingless", from which this data was downloaded. Data does not appear to have seen any controls for the respondents, leading to over 48,000 rows of data (most of which becomes irrelevant to us due to an "NA" answer being present in the age column). Table 1 shows a snippet of how much noise is present in the data, which will need to be cleaned prior to any analysis conducted.
+
+## Cleaned Data {#sec-cleaned-data}
+
+Cleaned data resulted in close to 45,000 rows of responses being eliminated from the sheet. Due to the sheer amount of data that was eliminated between the raw data and the analysis data a short breakdown of how this cleaning was conducted will be provided.
+
+### Analysis Data {#sec-analysis-data}
+
+```{r}
+#| echo: false
+#| error: false
+#| warning: false
+
+# Read the cleaned data from the Parquet file
+data_cleaned <- read_parquet("data/analysis_data/taboo-ratings-cleaned.parquet")
+
+# Select the first 6 rows and the first 6 columns
+data_subset <- data_cleaned[1:6, 1:6]
+
+# Generate a nice-looking table
+kable(data_subset, format = "html", caption = "First 6x6 Subset of Cleaned Data")
+```
+
+Cleaning for the primary analysis data was mostly done through filtering metadata from the sheet (time of response, program version, empty points columns, etc). However, the majority of the cleaning ended up when empty "selfage" identifiers were filtered out. As we intend to track the effect of age on taboo rating, empty age identifiers left us with junk data which we could not use. The end sheet was approximately 3800\~ rows from the 48,000\~ rows which were present in the raw data. Additionally, the data was converted from .csv to .parquet - this had no impact on the responses in the data when they were compared directly. Table 2 displays the first 6x6 entries in our cleaned data.
+
+### Average Data {#sec-average-data}
+
+```{r}
+#| fig-cap: "Average taboo rating of sexual acts by age."
+#| label: fig-1
+#| warning: false
+#| echo: false
+#| error: false
+
+
+# Read the cleaned data from the Parquet file (if needed)
+data_cleaned <- read_parquet("data/analysis_data/taboo-average-agescore.parquet")
+
+# Assuming 'data_cleaned' contains columns 'selfage' and 'average' where 'average' is the mean scores for 'selfage'
+# Generate a line graph
+ggplot(data_cleaned, aes(x = selfage, y = average)) +
+  geom_line() +  # This adds the line layer
+  geom_point() +  # Optionally add points to the line graph
+  labs(x = "Age",
+       y = "Average Score") +
+  theme_minimal()  # Adds a minimal theme
+```
+
+A secondary cleaned dataset was created by aggregating responses by the selfage variable and finding the mean taboo rating for each aggregated age. This data set was used to create a model, which we discuss in @sec-model. However, based on the simple plot we create in @fig-1, preliminary analysis suggests that the data collected for younger ages (\<50) is more consistent than the later ages (\>50). This is likely due to weaknesses in data collection and control methodology.
+
+## Data Weaknesses {#sec-data-weaknesses}
+
+### Collection {#sec-collection}
+
+As mentioned prior, data was collected by internet influencer Aella of X (formerly known as Twitter) fame. Data was collected through a Google Form disseminated through X and the majority of respondents accessed the relevant Google Form through this platform. While there is nothing inherently wrong with collecting data through Google Forms, there lies a problem in bias when said Google Form is distributed through one platform primarily.
+
+Aella is a prominent commentator on sex and sexuality, regularly "pushing the envelope" on controversial sex topics such as age of consent or non-traditional sexual relationships (polygamy, for example). While Aella's reach is wide due to the size of her X following (204,000\~ follows as of the time of writing [@aella_twitter]), the primary audience she is reaching would be those who already follow her and hold her opinions in a higher regard. Furthermore, the average age of X users is 25-34 years old, with other age groups skewing younger. We can assume that Aella's followers are of a similar, if not younger, distribution. Age distribution is further discussed in Section 3.1.
+
+This is all to say that Aella's data is likely to bias towards younger individuals with edgier sexual opinions than someone who has zero knowledge of Aella. This creates a limited set of respondents which cannot be used to gauge any "general" consensus on certain sex topics. While this data is phenomenal for gauging the opinions of Aella's followers, or even X users, applying this data to any broad population outside the internet is a significant stretch of credibility. Due to the way the data was collected, the applications of this data to the world outside of X is extremely limited if not outright inapplicable. The internet is not real life, therefore this data should not be treated as the opinions of the average Joe you see at Walmart.
+
+### Control {#sec-control}
+
+Aella's data collection lacked any form of meaningful control, leading to the vast majority of the data her Google Form collected being junk. As mentioned before, the raw excel sheet provided by Aella has around 48,000 rows of responses. Most of these responses lack a selfage answer; which is the only identifier Aella uses to distinguish responses in her data. The lack of identifiers, combined with an inherent lack of control to ensure responses are authentic, inject a "poison pill" into the data where every point needs to be taken with a grain of salt.
+
+To elaborate further, refer to @fig-1. The average data in the pre-50 self age plots neatly and regularly - so much so that a gradual decrease can be found correlated as the age pushes towards the 50 mark. However, passed the 50 mark, the data become irregular. While this can partially be attributed to lower distribution of older ages in the data (discussed in Section 2.4), this can also be due to "fake" ages being inputted in the selfage category. As selfage is the only reliable identifier within the data, any question to the authenticity to this identifier puts the credibility of all the data in jeopardy.
+
+To Aella's credit, this data was never intended for serious academic study. While the lack of control puts the credibility of responses into question, for Aella's intended purpose for the data (interesting discussions on taboo sexual topics) this lack of control won't take away from it. However, this data has the potential to be incredibly insightful - even a small amount of authentication for the selfage variable would've went a long way to making the responses concrete and reliable. That isn't the case, unfortunately, and the extreme irregularities for the \>50 selfage respondents puts the authenticity of all responses into question, even if we were to "clean" the irregular respondents from the data.
+
+## Model {#sec-model}
+
+### Explanation {#sec-explanation}
+
+A model was created to explore the correlation of age with the "taboo rating" Aella uses to gauge opinion on sexual acts. It is a simple linear model, where Y is the average score and X is the age. Below is the basic formula derived from our model:
+
+$$
+\text{average} = 2.2286 - 0.0121 \times \text{selfage}
+$$
+
+This model suggests that as age increases, the average score tends to decrease by about 0.0121 for each additional year.
+
+### Justification {#sec-justification}
+
+The linear model developed to track selfage with average score indicates a statistically significant relationship between the two variables. The model above finds that P \< 2e-16 for the intercept and P = 1.12e-11 for the slope. These incredibly small P-scores signify that both the intercept and slope are significantly different from zero, and due to a negative coefficient (-0.0121) in the slope the model finds that the relationship is statistically reliable (as there is a clear negative correlation between the Y and X axis).
+
+Furthermore, about 51.6% of the variability (0.516 in the R-squared coefficient) is explained by age. For a simple linear regression with one variable, this is an incredibly significant amount. It also aligns neatly with what we discuss in @sec-model, where the younger respondents seem to plot neater than the older respondents.
+
+These scores indicate that our model is statistically robust and therefore practically useful for predicting the average score based on age alone.
+
+# Results {#sec-results}
+
+## Age Distribution {#sec-age-distribution}
+
+```{r}
+#| fig-cap: "Distribution of respondents by age."
+#| label: fig-2
+#| echo: false
+#| warning: false
+#| error: false
+
+# Read the cleaned data
+data_cleaned <- read_parquet("data/analysis_data/taboo-ratings-cleaned.parquet")
+
+# Histogram of Age Groups
+ggplot(data_cleaned, aes(x = selfage)) +
+  geom_histogram(binwidth = 5, fill = "blue", color = "black") +
+  labs(x = "Age",
+       y = "Frequency") +
+  theme_minimal()
+```
+
+@fig-2 plots the distribution of responses based on age within the cleaned data file. What we find is that Aella's data seems to be collected from younger respondents (in relation to the overall data), centered around the average X user age range of 25-34 [@duarte2023xuser].
+
+This has several key implications for the data. The primary one is, as we predicted in @sec-collection, there is a substantial bias in the data towards the average user of the X platform. This leads to the data being highly-specific towards X users and not applicable for much else (other than making interesting graphs and starting discussions, as was Aella's intent). Furthermore, we see a wide range of ages (specifically, age 14 to age 100) despite the vast majority of responses being in the 20-40 age range. This wide range could result in a slight skew in certain analysis, specifically pertaining to model accuracy due the model being built off a simple selfage/average rating correlation without accounting for amount of responses per selfage variable.
+
+Essentially, analyzing the age distribution gives us the clearest indicator of data bias. As it correlates with average X user data [@duarte2023xuser], the biases we discuss in @sec-collection become validated to a degree. Furthermore, it explains why our model has a 51.6% R-score; the midpoint of this data is coincidentally the point where respondent concentration levels off dramatically, leading to less accurate averages due to a significantly smaller sample size.
+
+## Ratings by Category {#sec-ratings-by-category}
+
+```{r}
+#| fig-cap: "Heat map of average response to each taboo sexual category from 0 (lowest) to 5 (highest), with 0 being the lowest point on the Y-axis and 5 being the highest."
+#| label: fig-3
+#| echo: false
+#| warning: false
+#| error: false
+
+
+# Create a function to generate a single plot for a given range of columns
+generate_plot <- function(data, col_range, index) {
+  data_long <- pivot_longer(data,
+                            cols = col_range,
+                            names_to = "category",
+                            values_to = "rating")
+  
+  plot <- ggplot(data_long, aes(x = category, y = rating)) +
+    geom_boxplot() +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          axis.title.x = element_blank(),
+          axis.text.y = element_blank(),   # Remove y-axis text/labels
+          axis.ticks.y = element_blank(),  # Remove y-axis ticks
+          axis.title.y = element_blank(),  # Remove y-axis title
+          plot.title = element_text(size = 14, face = "bold"))
+  
+  return(plot)
+}
+
+# Define the column ranges for each plot
+col_ranges <- list(6:16, 17:27, 28:38, 39:49)
+
+# Apply the function to generate all plots
+plots <- lapply(seq_along(col_ranges), function(i) {
+  generate_plot(data_cleaned, col_ranges[[i]], i)
+})
+
+# Combine the plots using patchwork
+plot_layout <- reduce(plots, `+`) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom")
+
+# View the combined plot in a larger plotting window
+print(plot_layout)
+```
+
+@fig-3 displays a heatmap (boxplot) of the concentration of responses to the individual sex acts present in the data. The Y-axis, low to high, displays the concentration of the scores from zero to five. @fig-3 demonstrates the strengths of the data - due to the large amount of responses we can visualize quite neatly what we culturally consider "taboo" and what is considered a "normal" sex act. While the variables are self explanatory, some are esoteric to users of social media or sex enthusiasts like Aella; if an esoteric variable comes is discussed, it will be briefly explained for context.\
+\
+Interestingly, we find that the majority of sex acts gauged have a middling opinion of "taboo-ness", where the scores seem to aggregate in the two-to-four score range and very few having a definitive zero (objectively normal) or five (objectively taboo). For the objective categories, there are little surprises - variables "normalsex" (where what 'normal sex' is isn't defined), "sensuality", and "romance" are entirely uncontroversial and variables that are actual crimes, such as "executions" and "pedophilia" are definitively taboo.
+
+Beyond the extreme highs/lows, we see very stable plotting around certain ranges for each sexual topic. This indicates a form of consensus; we don't have any instances where there is a range of zero to five as a whole, rather the scores all seem to aggregate around two to three taboo scores. For example, in the bottom left cluster, we see three distinct sexual acts/categories - "creepy", "dirty", and "futa (sexual media involving depictions of characters who possess all male and female sexual organs)" - all three of these categories have the exact same heatmap aggregating in the middle-high range of taboo score. From a data perspective, this is fascinating, as these are very distinct categories from each other. This plays to the strengths of the data; it finds meaningful insights on opinions of which sex acts are considered taboo due to the sheer amount of data points (3800\~ cleaned) it utilizes.
+
+## Average Rating by Age {#sec-average-rating-by-age}
+
+```{r}
+#| fig-cap: "Average rating by age with model/line of best fit superimposed onto graph."
+#| label: fig-4
+#| echo: false
+#| warning: false
+#| error: false
+
+
+# Read the cleaned data from the Parquet file
+data_cleaned <- read_parquet("data/analysis_data/taboo-average-agescore.parquet")
+
+# Generate a line graph with a line of best fit and no title
+ggplot(data_cleaned, aes(x = selfage, y = average)) +
+  geom_line() +                             # Add the line layer
+  geom_point() +                            # Optionally add points to the line graph
+  geom_smooth(method = "lm", color = "red", se = FALSE) +  # Add a red line of best fit without a confidence interval
+  labs(x = "Age", y = "Average Score") +    # Add labels for x and y axes
+  theme_minimal()                              
+```
+
+@fig-4 builds off of @fig-1 by superimposing a line of best fit to the data directly. As this graph is built using the same two variables as our model, the line of best fit is near identical to our model due to it being created through linear regression.
+
+Observing this graph we see significant correlation with what we discussed in @sec-justification - our line of best fit is near perfect in predicting the gradual decrease for ages up to the 50 mark, but then loses accuracy afterwards. While there isn't much unique to discuss, the close association of the line of best fit to our model is further indication that there is a severe bias towards the younger ages while simultaneously having unreliable data found in the higher ages (or, ages with lower proportions of distribution).
+
+Furthermore, the way the data plots in @fig-4 indicates that certain age clusters might be using false/inauthentic selfage values. Observe the "highs" of the ages between 50 and 75 - we can draw a nearly perfect line to equal highs in earlier age groups. Due to the extremely low distribution of higher ages seen in @fig-2, alongside the inherent unlikeliness of there being respondents over the age of 60, we can hypothesize that these data points come from younger respondents who decided to falsify their age when asked to disclose it. This further corroborates our discussion in @sec-control, where the lack of controls for the data make it difficult to glean meaningful, definitive conclusions from the data.
+
+## Average Rating by Age Group {#sec-average-rating-by-age-group}
+
+```{r}
+#| fig-cap: "Comparison of average rating between age groups; ages grouped by 'younger (14-43)' and 'older(44-100)' based on selfage variable from the data."
+#| label: fig-5
+#| echo: false
+#| warning: false
+#| error: false
+
+
+# Read the cleaned data from the Parquet file
+data_cleaned <- read_parquet("data/analysis_data/taboo-average-agescore.parquet")
+
+# Categorize 'selfage' into two groups
+data_grouped <- data_cleaned %>%
+  mutate(age_group = case_when(
+    selfage >= 14 & selfage <= 43 ~ "14-43",
+    selfage >= 44 & selfage <= 100 ~ "44-100",
+    TRUE ~ as.character(selfage)  # To handle any ages outside the specified ranges, if any
+  )) %>%
+  group_by(age_group) %>%
+  summarise(average = mean(average, na.rm = TRUE))
+
+# Create a graph comparing the two age groups
+ggplot(data_grouped, aes(x = age_group, y = average, fill = age_group)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(x = "Age Group", y = "Average") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+@fig-5 separates the average data based on age group. Ages were split directly down the middle, and were based not on the total range of ages but rather the total amount of selfage variables we had in our sample (approximately 60 aggregate selfage data points). We fine, interestingly, that despite the model being unable to predict the latter half of ages in @fig-4, the model's accuracy holds up through clustering.
+
+Our model in @sec-model finds a strong negative correlation with the selfage and average variables. Splitting our selfage variable into two, between low and high, manages to hold this correlation between the two groups. The higher age group, 44-100, is notably lower (by about .5) than the lower age group of 14-43.
+
+This speaks to the strength of our model: despite a semi-arbitrary clustering of our selfage variable we fine the same correlation between the two groups as our model does between the two variables altogether.
+
+# Discussion {#sec-discussion}
+
+## Significance of Findings {#sec-significance-of-findings}
+
+The significance of this paper's findings lies less in the trends found in the opinions of the sex acts themselves but rather in meta-analysis of the how the collection practices affected the data. Aella's dataset does many things well: it is robust, includes identifiers to separate sets of responses, and has an original sample size of over 48,000 individual responses. Based on these factors alone, we'd expect the data to be incredibly insightful with broad application to cultural opinions of various taboo sex acts.
+
+However, the data has a built-in poison pill: a distinct and pervasive lack of any controls. This is most clear in @fig-1 and @fig-4, where our data models very neatly until we reach age groups of low distribution as seen in @fig-2. Even through eye-balling the data, based on X's average user group (where the survey was disseminated) it becomes incredibly unlikely that there are as many respondents in the 70-100 age group.
+
+This lack of control stems from Aella's preferred survey medium alongside how she distributes the survey in the first place. Aella utilizes Google Forms; inherently, there is nothing wrong with this. However, Aella uses no function to ensure the responses are genuine or authenticated; there is no use of email validation, date of birth proof, or even something as simple as name validation through the form. All of these functions are possible through Google Forms, but require manual review from Aella herself. Whether this comes from laziness or simply lacking the need for it for her purposes can be debated ad nauseum, but fact remains that the lack of controls present in the survey allow for bad actors to poison the data as a whole. There's no way to distinguish which specific data-points are "bad", despite having overwhelming indication to there being so as @fig-4 shows.
+
+Furthermore, the data is inherently biased due to how Aella distributed the survey. Aella is an X influencer and the majority of her public communication comes from the social media platform. Because of this, it was natural that she found respondents by announcing it through the platform. As Aella's audience are a subset of X users, who are a subset of the general population, Aella's data has an inherent bias in who is responding to this survey. This isn't bad, per say, but results in limited application of the dataset beyond Aella's X followers who likely share certain "edgy" opinions on sex as she does. For example, the bestiality variable which tracks opinion of the crime of bestiality is not the highest taboo score of five in @fig-3; rather, it falls in a range of four to five on the taboo scale. Aella is known for controversial opinions on the subject of bestiality [@aella2022bestiality], which would explain why bestiality has a substantial proportion of lower taboo ratings than other sexual crimes like pedophilia on the heatmap. This shows how Aella's sampling created a skew which might not be accurate to the general population.
+
+## Importance of Good Collection Practices {#sec-importance-of-good-collection-practices}
+
+Good collection is the backbone of good data. The US General Social Survey, for example, despite its weaknesses [@beveridge2007gss], has extremely strong and consistent data collection practices. Despite the inconvenience, especially in a connected age, the GSS is collected mostly through in person interviews.
+
+The benefits of this are widespread, but primarily lie in the authenticity of the data. In person surveys allow for identifiers to be validated on the spot; this means that data like age and gender can be verified immediately which lends credibility to the responses collected by the survey. Does this prevent specific actors from lying regardless? No, but anecdotally we can assume that individuals who agree to an in-person survey, validate their information, and actively participate in the survey will be answering honestly and in good faith.
+
+This contrasts with Aella's collection drastically. Once again, Aella collected this dataset through anonymous surveys distributed through X, a platform known for having a veritably high amount of bad actors and trolls [@breen2023elon]. While functional for Aella's purposes, its not difficult to see how flawed her collection practices are. Instituting any number of simple controls would change this dramatically, but due to there not being any Aella's practices end up highlighting how much better other social opinion surveys are conducted.
+
+## Conclusion {#sec-conclusion}
+
+In conclusion, Aella's Kink Taboo Rating (v3) dataset provides an extremely robust dataset that is functionally useless. Very pretty graphs can be created with very interesting data points being plotted - this is an objective strength to Aella's reach and approach to data collection. However, to only praise her data based on how attractive/interesting the data is would be narrow minded.
+
+For every strength this dataset has, a glaring flaw will undermine it. The data is collected with a "quick and dirty" approach, seeming to focus on amount of respondents over verifiable, authentic responses. Here lies the underlying question: is data really meaningful if we can't apply it generally? If I go to the fictional "Pee-In-Milkshake Convention", and I sample how many people enjoy pee in their milkshakes, I will likely get a high amount of responses indicating enjoyment of pee milkshakes. However interesting this data might be it is functionally useless - if I try to apply it any population outside of the milkshake pee enthusiasts I would be incredibly dishonest.
+
+Therein lies the flaw in Aella's data: despite being robust on paper, her sampling and authenticity controls make her data useless. And useless data, no matter how interesting, shouldn't be used to glean useful insights to our culture. Unfortunately, this isn't the case with Aella's data: many other influencers and prominent tech industrialists treat her data as a socially valuable [@aellabirthday], where we can glean important insights to how we view sex acts. This is misguided and dangerous, and highlighting these bad practices by analyzing the data independently is how can push against misleading and dangerous data being disseminated.
+
+## Acknowledgement {#sec-acknowledgement}
+
+The analysis conducted in this paper would not be possible without the R programming language [@citeR] or the accompanying libraries. Thank you to the creators of ggpubr [@citeGGPUBR], ggplot2 [@citeGGPLOT2], openxlsx [@citeExcel], here [@citehere], patchwork [@citepatchwork], dplyr [@citeDplyr], corrplot [@corrplot2021], nortest [@citeNortest] and knitr [@citeKnitr] for making this paper possible.
+
+# References {#sec-citations}
