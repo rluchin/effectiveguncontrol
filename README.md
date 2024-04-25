@@ -10,4 +10,4 @@ Raw data was collected directly by reviewing sex crime sentencing statistics and
 LLM model GPT4 and GPT3.5 were used in the creation of code to clean, plot, and graph data. Conversations and links to conversations can be found in other/llm/usage.txt
 
 **Raw Data Acquisition**
-Data was collected by X (formerly known as Twitter) influence Aella, known as @aella_girl on X. Raw data can be acquired from her website at https://knowingless.com/raw-data/
+Data was collected by X (formerly known as Twitter) influencer Aella, known as @aella_girl on X. Raw data can be acquired from her website at https://knowingless.com/raw-data/
