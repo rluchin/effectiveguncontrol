@@ -1,4 +1,4 @@
-# Analysis of opinion poll data to explore the potential link between age and opinion of how "taboo" a particular sexual act is percieved
+# Analysis of Opinion Poll Data to Explore the Potential Link Between Age and Particular Sexual Acts
 
 **Overview**
 This repo contains the code and replication package for an analysis of opinion poll data to explore the potential link between age and opinion of how "taboo" a particular sexual act is percieved.
